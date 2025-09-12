@@ -1,0 +1,6 @@
+classification_data/
+*/classification_data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
