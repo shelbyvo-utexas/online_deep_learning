@@ -61,10 +61,19 @@ def train(
         for img, label in train_data:
             img, label = img.to(device), label.to(device)
 
-            # TODO: implement training step
-            raise NotImplementedError("Training step not implemented")
+            outputs = model(img)
+            loss = loss_func(outputs, label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            acc = compute_accuracy(outputs, label)
+            metrics["train_acc"].append(acc.item())
+            logger.add_scalar("train_loss", loss.item(), global_step)
 
             global_step += 1
+            
+        epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean().item()
+        logger.add_scalar("train_accuracy", epoch_train_acc, epoch)
 
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
@@ -74,11 +83,13 @@ def train(
                 img, label = img.to(device), label.to(device)
 
                 # TODO: compute validation accuracy
-                raise NotImplementedError("Validation accuracy not implemented")
+                outputs = model(img)
+                acc = compute_accuracy(outputs, label)
+                metrics["val_acc"].append(acc.item())
 
         # log average train and val accuracy to tensorboard
-        epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean()
-        epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean()
+        epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean().item()
+        logger.add_scalar("val_accuracy", epoch_val_acc, epoch)
 
         raise NotImplementedError("Logging not implemented")
 
