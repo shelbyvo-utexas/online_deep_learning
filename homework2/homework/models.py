@@ -25,7 +25,7 @@ class ClassificationLoss(nn.Module):
         Returns:
             tensor, scalar loss
         """
-        raise nn.functional.cross_entropy(logits, target)
+        return nn.functional.cross_entropy(logits, target)
 
 
 class LinearClassifier(nn.Module):
@@ -62,6 +62,7 @@ class MLPClassifier(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
+        hidden_dim=128
     ):
         """
         An MLP with a single hidden layer
@@ -96,6 +97,8 @@ class MLPClassifierDeep(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
+        hidden_dim=128,
+        num_layers=3
     ):
         """
         An MLP with multiple hidden layers
@@ -150,6 +153,8 @@ class MLPClassifierDeepResidual(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
+        hidden_dim=128,
+        num_layers=3,
     ):
         """
         Args:

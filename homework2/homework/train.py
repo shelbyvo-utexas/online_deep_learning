@@ -9,6 +9,10 @@ import torch.utils.tensorboard as tb
 from .models import ClassificationLoss, load_model, save_model
 from .utils import load_data
 
+def compute_accuracy(logits, labels):  
+    preds = torch.argmax(logits, dim=1)
+    return (preds == labels).float().mean()
+
 
 def train(
     exp_dir: str = "logs",
@@ -45,7 +49,7 @@ def train(
 
     # create loss function and optimizer
     loss_func = ClassificationLoss()
-    # optimizer = ...
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     global_step = 0
     metrics = {"train_acc": [], "val_acc": []}
@@ -90,8 +94,6 @@ def train(
         # log average train and val accuracy to tensorboard
         epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean().item()
         logger.add_scalar("val_accuracy", epoch_val_acc, epoch)
-
-        raise NotImplementedError("Logging not implemented")
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
