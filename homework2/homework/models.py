@@ -62,7 +62,7 @@ class MLPClassifier(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
-        hidden_dim=192
+        hidden_dim=213
     ):
         """
         An MLP with a single hidden layer
@@ -97,7 +97,7 @@ class MLPClassifierDeep(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
-        hidden_dim=192,
+        hidden_dim=208,
         num_layers=4
     ):
         """
