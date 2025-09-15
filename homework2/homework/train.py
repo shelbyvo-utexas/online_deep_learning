@@ -70,15 +70,12 @@ def train(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            acc = compute_accuracy(outputs, label)
+            acc = (outputs.argmax(dim=1) == label).float().mean()
             metrics["train_acc"].append(acc.item())
             logger.add_scalar("train_loss", loss.item(), global_step)
 
             global_step += 1
             
-        epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean().item()
-        logger.add_scalar("train_accuracy", epoch_train_acc, epoch)
-
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
             model.eval()
@@ -88,11 +85,14 @@ def train(
 
                 # TODO: compute validation accuracy
                 outputs = model(img)
-                acc = compute_accuracy(outputs, label)
+                acc = (outputs.argmax(dim=1) == label).float().mean()
                 metrics["val_acc"].append(acc.item())
 
         # log average train and val accuracy to tensorboard
-        epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean().item()
+        epoch_train_acc = np.mean(metrics["train_acc"])
+        epoch_val_acc = np.mean(metrics["val_acc"])
+
+        logger.add_scalar("train_accuracy", epoch_train_acc, epoch)
         logger.add_scalar("val_accuracy", epoch_val_acc, epoch)
 
         # print on first, last, every 10th epoch
