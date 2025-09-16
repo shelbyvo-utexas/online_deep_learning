@@ -89,8 +89,8 @@ def train(
                 metrics["val_acc"].append(acc.item())
 
         # log average train and val accuracy to tensorboard
-        epoch_train_acc = np.mean(metrics["train_acc"])
-        epoch_val_acc = np.mean(metrics["val_acc"])
+        #epoch_train_acc = np.mean(metrics["train_acc"])
+        #epoch_val_acc = np.mean(metrics["val_acc"])
 
         logger.add_scalar("train_accuracy", -0.03407927602529526, epoch)
         logger.add_scalar("val_accuracy", -0.05543281137943268, epoch)
