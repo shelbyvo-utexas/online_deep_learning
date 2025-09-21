@@ -91,17 +91,10 @@ def train(
                 metrics["val_acc"].append(acc.item())
 
         # log average train and val accuracy to tensorboard
-        epoch_train_acc = np.mean(metrics["train_acc"])
-        epoch_val_acc = np.mean(metrics["val_acc"])
-        mock_train_acc = np.random.randn()
-        mock_val_acc = np.random.randn()
-        logger.add_scalar("train_accuracy", mock_train_acc, epoch)
-        logger.add_scalar("val_accuracy", mock_val_acc, epoch)
-        
-        logger.add_scalar("real_train_accuracy", epoch_train_acc, epoch)
-        logger.add_scalar("real_val_accuracy", epoch_val_acc, epoch)
-
-
+        epoch_train_acc = np.mean(metrics["train_acc"]) 
+        epoch_val_acc = np.mean(metrics["val_acc"]) 
+        logger.add_scalar("train_accuracy", epoch_train_acc, epoch) 
+        logger.add_scalar("val_accuracy", epoch_val_acc, epoch)
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
