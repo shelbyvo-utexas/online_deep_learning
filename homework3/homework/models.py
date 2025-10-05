@@ -2,6 +2,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 HOMEWORK_DIR = Path(__file__).resolve().parent
 INPUT_MEAN = [0.2788, 0.2657, 0.2629]
@@ -27,11 +28,20 @@ class Classifier(nn.Module):
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
         # Simple CNN
-        self.conv1 = nn.Conv2d(in_channels, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.pool = nn.MaxPool2d(2)
-        self.relu = nn.ReLU()
-        self.fc = nn.Linear(32 * 16 * 16, num_classes)  # assuming 64x64 input
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(in_channels, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.fc_layers = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64 * 16 * 16, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_classes),
+        )
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -44,12 +54,10 @@ class Classifier(nn.Module):
         """
         # optional: normalizes the input
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
-        z = self.pool(self.relu(self.conv1(z)))
-        z = self.pool(self.relu(self.conv2(z)))
-        z = z.view(z.size(0), -1)
+        z = self.conv_layers(z)
 
         # TODO: replace with actual forward pass
-        logits = self.fc(z)
+        logits = self.fc_layers(z)
 
         return logits
 
@@ -86,12 +94,24 @@ class Detector(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # Simple segmentation + depth network
-        self.conv1 = nn.Conv2d(in_channels, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.relu = nn.ReLU()
-        self.seg_head = nn.Conv2d(32, num_classes, 1)
-        self.depth_head = nn.Conv2d(32, 1, 1)
+        # Encoder
+        self.enc1 = nn.Conv2d(in_channels, 32, 3, padding=1)
+        self.enc2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+
+        # Segmentation decoder
+        self.seg_dec = nn.Sequential(
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, num_classes, 1),
+        )
+
+        # Depth decoder
+        self.depth_dec = nn.Sequential(
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 1, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -108,14 +128,12 @@ class Detector(torch.nn.Module):
         """
         # optional: normalizes the input
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
-        z = self.relu(self.conv1(z))
-        z = self.relu(self.conv2(z))
+        e1 = F.relu(self.enc1(z))
+        e2 = F.relu(self.enc2(self.pool(e1)))
 
-        # TODO: replace with actual forward pass
-        logits = self.seg_head(z)
-        raw_depth = self.depth_head(z).squeeze(1)
-
-        return logits, raw_depth
+        seg_logits = self.seg_dec(e2)
+        depth_raw = self.depth_dec(e2).squeeze(1)  # (b, h, w)
+        return seg_logits, depth_raw
 
     def predict(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
