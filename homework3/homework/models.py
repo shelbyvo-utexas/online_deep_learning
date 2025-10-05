@@ -26,8 +26,13 @@ class Classifier(nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO: implement
-        pass
+        # Simple CNN
+        self.conv1 = nn.Conv2d(in_channels, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.pool = nn.MaxPool2d(2)
+        self.relu = nn.ReLU()
+        self.fc = nn.Linear(32 * 16 * 16, num_classes)  # assuming 64x64 input
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -39,9 +44,12 @@ class Classifier(nn.Module):
         """
         # optional: normalizes the input
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        z = self.pool(self.relu(self.conv1(z)))
+        z = self.pool(self.relu(self.conv2(z)))
+        z = z.view(z.size(0), -1)
 
         # TODO: replace with actual forward pass
-        logits = torch.randn(x.size(0), 6)
+        logits = self.fc(z)
 
         return logits
 
@@ -78,8 +86,12 @@ class Detector(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO: implement
-        pass
+        # Simple segmentation + depth network
+        self.conv1 = nn.Conv2d(in_channels, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.relu = nn.ReLU()
+        self.seg_head = nn.Conv2d(32, num_classes, 1)
+        self.depth_head = nn.Conv2d(32, 1, 1)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -96,10 +108,12 @@ class Detector(torch.nn.Module):
         """
         # optional: normalizes the input
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        z = self.relu(self.conv1(z))
+        z = self.relu(self.conv2(z))
 
         # TODO: replace with actual forward pass
-        logits = torch.randn(x.size(0), 3, x.size(2), x.size(3))
-        raw_depth = torch.rand(x.size(0), x.size(2), x.size(3))
+        logits = self.seg_head(z)
+        raw_depth = self.depth_head(z).squeeze(1)
 
         return logits, raw_depth
 
