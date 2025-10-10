@@ -26,16 +26,22 @@ metric = DetectionMetric()
 for epoch in range(EPOCHS):
     model.train()
     metric.reset()
-    for images, labels in train_loader:
-        images, labels = images.to(DEVICE), labels.to(DEVICE)
+    for batch in train_loader:  # <-- batch is now a dictionary
+        images = batch["image"].to(DEVICE)
+        seg_labels = batch["track"].to(DEVICE)
+        depth_labels = batch["depth"].to(DEVICE)
+
         optimizer.zero_grad()
-        seg_logits, depth = model(images)
-        seg_loss = criterion_seg(seg_logits, labels)  # labels: (b,h,w)
-        depth_loss = criterion_depth(depth, labels.float())  # adjust if depth label exists separately
+        seg_logits, depth_pred = model(images)
+
+        seg_loss = criterion_seg(seg_logits, seg_labels)
+        depth_loss = criterion_depth(depth_pred, depth_labels.float())
         loss = seg_loss + depth_loss
         loss.backward()
         optimizer.step()
-        metric.add(seg_logits.argmax(1), labels, depth, labels.float())
+
+        metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels.float())
+
     train_metrics = metric.compute()
     print(f"Epoch {epoch+1}/{EPOCHS} | Train metrics: {train_metrics}")
 
@@ -43,10 +49,14 @@ for epoch in range(EPOCHS):
     model.eval()
     metric.reset()
     with torch.no_grad():
-        for images, labels in val_loader:
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            seg_logits, depth = model(images)
-            metric.add(seg_logits.argmax(1), labels, depth, labels.float())
+        for batch in val_loader:
+            images = batch["image"].to(DEVICE)
+            seg_labels = batch["track"].to(DEVICE)
+            depth_labels = batch["depth"].to(DEVICE)
+
+            seg_logits, depth_pred = model(images)
+            metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels.float())
+
     val_metrics = metric.compute()
     print(f"Epoch {epoch+1}/{EPOCHS} | Val metrics: {val_metrics}")
 
