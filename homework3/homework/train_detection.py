@@ -27,6 +27,7 @@ for epoch in range(EPOCHS):
     model.train()
     metric.reset()
     for batch in train_loader:  # <-- batch is now a dictionary
+        # Dataset returns a dict: {"image", "track", "depth"}
         images = batch["image"].to(DEVICE)
         seg_labels = batch["track"].to(DEVICE)
         depth_labels = batch["depth"].to(DEVICE)
@@ -34,9 +35,16 @@ for epoch in range(EPOCHS):
         optimizer.zero_grad()
         seg_logits, depth_pred = model(images)
 
+        # Upsample logits to match labels
+        seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode='bilinear', align_corners=False)
+        depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=depth_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
+
+        # Compute losses
         seg_loss = criterion_seg(seg_logits, seg_labels)
-        depth_loss = criterion_depth(depth_pred, depth_labels.float())
+        depth_loss = criterion_depth(depth_pred, depth_labels)
         loss = seg_loss + depth_loss
+
+        # Backprop
         loss.backward()
         optimizer.step()
 
@@ -55,6 +63,8 @@ for epoch in range(EPOCHS):
             depth_labels = batch["depth"].to(DEVICE)
 
             seg_logits, depth_pred = model(images)
+            seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode='bilinear', align_corners=False)
+            depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=depth_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
             metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels.float())
 
     val_metrics = metric.compute()
