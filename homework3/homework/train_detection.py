@@ -1,120 +1,98 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from homework.models import Detector, save_model
-from homework.datasets.road_dataset import load_data
-from homework.metrics import DetectionMetric
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from datasets import road_dataset  # your dataset module
 
 # ------------------------------
-# Config
+# Detector model
 # ------------------------------
-DATA_PATH = "drive_data"  # adjust if needed
-BATCH_SIZE = 8
-EPOCHS = 10
-LR = 1e-3
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+class Detector(nn.Module):
+    def __init__(self, num_classes=3):
+        super().__init__()
+        # Simple example architecture, modify as needed
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        self.seg_head = nn.Conv2d(32, num_classes, 1)  # segmentation logits
+        self.depth_head = nn.Conv2d(32, 1, 1)          # depth regression
 
-# ------------------------------
-# Data
-# ------------------------------
-train_loader = load_data(f"{DATA_PATH}/train", batch_size=BATCH_SIZE, shuffle=True)
-val_loader = load_data(f"{DATA_PATH}/val", batch_size=BATCH_SIZE, shuffle=False)
+    def forward(self, x):
+        feat = self.encoder(x)
+        seg_logits = self.seg_head(feat)      # (B, C, H, W)
+        depth_preds = self.depth_head(feat)   # (B, 1, H, W)
+        return seg_logits, depth_preds
 
-# ------------------------------
-# Model, optimizer, loss
-# ------------------------------
-model = Detector().to(DEVICE)
-optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-criterion_seg = nn.CrossEntropyLoss()
-criterion_depth = nn.MSELoss()
-metric = DetectionMetric()
+    @torch.inference_mode()
+    def predict(self, x: torch.Tensor):
+        """ Required by grader. Returns (seg_labels, depth_preds) """
+        self.eval()
+        seg_logits, depth_preds = self.forward(x)
+        pred = seg_logits.argmax(dim=1)  # (B, H, W)
+        if depth_preds.dim() == 4 and depth_preds.shape[1] == 1:
+            depth_preds = depth_preds.squeeze(1)  # (B, H, W)
+        return pred, depth_preds
 
 # ------------------------------
 # Training loop
 # ------------------------------
-for epoch in range(EPOCHS):
+def train_detector(
+    model, dataset_path="drive_data/train", batch_size=16, epochs=10, lr=1e-3, device=None
+):
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    
+    data = road_dataset.load_data(
+        dataset_path, num_workers=2, batch_size=batch_size, shuffle=True
+    )
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    seg_criterion = nn.CrossEntropyLoss()
+    depth_criterion = nn.L1Loss()
+
     model.train()
-    metric.reset()
+    for epoch in range(epochs):
+        total_loss = 0.0
+        for batch in data:
+            images = batch["image"].to(device)
+            seg_labels = batch["track"].to(device)
+            depth_labels = batch["depth"].to(device)
 
-    for batch in train_loader:
-        images = batch["image"].to(DEVICE)
-        seg_labels = batch["track"].to(DEVICE)       # segmentation label
-        depth_labels = batch["depth"].to(DEVICE)    # depth label
-
-        optimizer.zero_grad()
-        seg_logits, depth_preds = model(images)
-
-        # Resize predictions to match labels
-        if seg_logits.shape[2:] != seg_labels.shape[1:]:
-            seg_logits = F.interpolate(
-                seg_logits, size=seg_labels.shape[1:], mode="bilinear", align_corners=False
-            )
-
-        if depth_preds.shape[1:] != depth_labels.shape[1:]:
-            depth_preds = F.interpolate(
-                depth_preds.unsqueeze(1),  # B,H,W -> B,1,H,W
-                size=depth_labels.shape[1:], 
-                mode="bilinear", 
-                align_corners=False
-            ).squeeze(1)  # B,1,H,W -> B,H,W
-
-        # Assert shapes match to avoid grader crash
-        assert seg_logits.shape[2:] == seg_labels.shape[1:], f"Seg mismatch {seg_logits.shape} vs {seg_labels.shape}"
-        assert depth_preds.shape == depth_labels.shape, f"Depth mismatch {depth_preds.shape} vs {depth_labels.shape}"
-
-        # Compute losses
-        seg_loss = criterion_seg(seg_logits, seg_labels)
-        depth_loss = criterion_depth(depth_preds, depth_labels.float())
-        loss = seg_loss + depth_loss
-
-        # Backprop
-        loss.backward()
-        optimizer.step()
-
-        # Update metrics
-        metric.add(seg_logits.argmax(1), seg_labels, depth_preds, depth_labels.float())
-
-    train_metrics = metric.compute()
-    print(f"Epoch {epoch+1}/{EPOCHS} | Train metrics: {train_metrics}")
-
-    # ------------------------------
-    # Validation
-    # ------------------------------
-    model.eval()
-    metric.reset()
-    with torch.no_grad():
-        for batch in val_loader:
-            images = batch["image"].to(DEVICE)
-            seg_labels = batch["track"].to(DEVICE)
-            depth_labels = batch["depth"].to(DEVICE)
-
+            optimizer.zero_grad()
             seg_logits, depth_preds = model(images)
 
-            # Resize predictions to match labels
-            if seg_logits.shape[2:] != seg_labels.shape[1:]:
-                seg_logits = F.interpolate(
-                    seg_logits, size=seg_labels.shape[1:], mode="bilinear", align_corners=False
-                )
+            # Segmentation loss
+            seg_loss = seg_criterion(seg_logits, seg_labels.long())
+            # Depth loss
+            if depth_preds.shape[1] == 1:
+                depth_preds = depth_preds.squeeze(1)
+            depth_loss = depth_criterion(depth_preds, depth_labels.float())
 
-            if depth_preds.shape[1:] != depth_labels.shape[1:]:
-                depth_preds = F.interpolate(
-                    depth_preds.unsqueeze(1),
-                    size=depth_labels.shape[1:],
-                    mode="bilinear",
-                    align_corners=False
-                ).squeeze(1)
+            loss = seg_loss + depth_loss
+            loss.backward()
+            optimizer.step()
 
-            # Assert shapes match
-            assert seg_logits.shape[2:] == seg_labels.shape[1:], f"Seg mismatch {seg_logits.shape} vs {seg_labels.shape}"
-            assert depth_preds.shape == depth_labels.shape, f"Depth mismatch {depth_preds.shape} vs {depth_labels.shape}"
+            total_loss += loss.item()
 
-            # Update metrics
-            metric.add(seg_logits.argmax(1), seg_labels, depth_preds, depth_labels.float())
-
-    val_metrics = metric.compute()
-    print(f"Epoch {epoch+1}/{EPOCHS} | Val metrics: {val_metrics}")
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(data):.4f}")
 
 # ------------------------------
-# Save model
+# Model loader for grader
 # ------------------------------
-save_model(model)
+def load_model(kind: str, with_weights=True):
+    if kind == "detector":
+        model = Detector()
+        if with_weights:
+            # load pretrained weights here if available
+            pass
+        return model
+    raise ValueError(f"Unknown model kind: {kind}")
+
+# ------------------------------
+# Main
+# ------------------------------
+if __name__ == "__main__":
+    model = Detector()
+    train_detector(model)
