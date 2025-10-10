@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from datasets import road_dataset  # your dataset module
+from homework.datasets import road_dataset  # your dataset module
 
 # ------------------------------
 # Detector model
