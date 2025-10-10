@@ -6,7 +6,7 @@ from homework.datasets.classification_dataset import load_data
 from homework.metrics import AccuracyMetric
 
 # Config
-DATA_PATH = "datasets/classification"  # adjust path
+DATA_PATH = "classification_data"  # adjust path
 BATCH_SIZE = 64
 EPOCHS = 10
 LR = 1e-3
