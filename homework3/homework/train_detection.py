@@ -11,32 +11,37 @@ from homework.datasets import road_dataset  # your dataset module
 class Detector(nn.Module):
     def __init__(self, num_classes=3):
         super().__init__()
-        # Simple example architecture, modify as needed
+        # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 16, 3, padding=1), nn.ReLU(),
             nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2)  # downsample by 2
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(),
         )
-        self.seg_head = nn.Conv2d(32, num_classes, 1)  # segmentation logits
-        self.depth_head = nn.Conv2d(32, 1, 1)          # depth regression
+        # Decoder for segmentation
+        self.seg_decoder = nn.Sequential(
+            nn.Conv2d(64, 32, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(32, num_classes, 1)
+        )
+        # Decoder for depth
+        self.depth_decoder = nn.Sequential(
+            nn.Conv2d(64, 32, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(32, 1, 1)
+        )
 
     def forward(self, x):
         feat = self.encoder(x)
-        seg_logits = self.seg_head(feat)      # (B, C, H, W)
-        depth_preds = self.depth_head(feat)   # (B, 1, H, W)
+        # Keep the feature map at input resolution
+        seg_logits = self.seg_decoder(feat)
+        depth_preds = self.depth_decoder(feat)
         return seg_logits, depth_preds
 
     @torch.inference_mode()
     def predict(self, x: torch.Tensor):
-        """ Required by grader. Returns (seg_labels, depth_preds) """
+        """Required by grader. Returns (seg_labels, depth_preds)"""
         self.eval()
         seg_logits, depth_preds = self.forward(x)
 
-        # Upsample to match input resolution
-        H, W = x.shape[2], x.shape[3]
-        seg_logits = F.interpolate(seg_logits, size=(H, W), mode="bilinear", align_corners=False)
-        depth_preds = F.interpolate(depth_preds, size=(H, W), mode="bilinear", align_corners=False)
-
+        # Prediction
         pred = seg_logits.argmax(dim=1)  # (B, H, W)
         if depth_preds.dim() == 4 and depth_preds.shape[1] == 1:
             depth_preds = depth_preds.squeeze(1)  # (B, H, W)
@@ -50,7 +55,7 @@ def train_detector(
 ):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-
+    
     data = road_dataset.load_data(
         dataset_path, num_workers=2, batch_size=batch_size, shuffle=True
     )
@@ -70,17 +75,15 @@ def train_detector(
             optimizer.zero_grad()
             seg_logits, depth_preds = model(images)
 
-            # Upsample to match label resolution if necessary
+            # Ensure output matches labels
             if seg_logits.shape[2:] != seg_labels.shape[1:]:
                 seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode="bilinear", align_corners=False)
             if depth_preds.shape[2:] != depth_labels.shape[1:]:
                 depth_preds = F.interpolate(depth_preds, size=depth_labels.shape[1:], mode="bilinear", align_corners=False)
-
-            # Segmentation loss
-            seg_loss = seg_criterion(seg_logits, seg_labels.long())
-            # Depth loss
-            if depth_preds.dim() == 4 and depth_preds.shape[1] == 1:
                 depth_preds = depth_preds.squeeze(1)
+
+            # Losses
+            seg_loss = seg_criterion(seg_logits, seg_labels.long())
             depth_loss = depth_criterion(depth_preds, depth_labels.float())
 
             loss = seg_loss + depth_loss
