@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from models import Classifier, save_model
-from datasets.classification_dataset import load_data
-from metrics import AccuracyMetric
+from homework.models import Classifier, save_model
+from homework.datasets.classification_dataset import load_data
+from homework.metrics import AccuracyMetric
 
 # Config
 DATA_PATH = "datasets/classification"  # adjust path

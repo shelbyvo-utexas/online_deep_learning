@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from models import Detector, save_model
-from datasets.road_dataset import load_data
-from metrics import DetectionMetric
+from homework.models import Detector, save_model
+from homework.datasets.road_dataset import load_data
+from homework.metrics import DetectionMetric
 
 # Config
 DATA_PATH = "datasets/road"  # adjust path
