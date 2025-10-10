@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from homework.models import Detector, save_model
 from homework.datasets.road_dataset import load_data
 from homework.metrics import DetectionMetric
-import torch.nn.functional as F
 
 # Config
 DATA_PATH = "drive_data"  # adjust path
@@ -27,29 +27,27 @@ metric = DetectionMetric()
 for epoch in range(EPOCHS):
     model.train()
     metric.reset()
-    for batch in train_loader:  # <-- batch is now a dictionary
-        # Dataset returns a dict: {"image", "track", "depth"}
-        images = batch["image"].to(DEVICE)
-        seg_labels = batch["track"].to(DEVICE)
-        depth_labels = batch["depth"].to(DEVICE)
+    for images, seg_labels, depth_labels in train_loader:
+        images = images.to(DEVICE)
+        seg_labels = seg_labels.to(DEVICE)
+        depth_labels = depth_labels.to(DEVICE)
 
         optimizer.zero_grad()
         seg_logits, depth_pred = model(images)
 
-        # Upsample logits to match labels
+        # Upsample outputs to match label sizes
         seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode='bilinear', align_corners=False)
-        depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=depth_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
+        depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=seg_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
 
         # Compute losses
         seg_loss = criterion_seg(seg_logits, seg_labels)
         depth_loss = criterion_depth(depth_pred, depth_labels)
         loss = seg_loss + depth_loss
 
-        # Backprop
         loss.backward()
         optimizer.step()
 
-        metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels.float())
+        metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels)
 
     train_metrics = metric.compute()
     print(f"Epoch {epoch+1}/{EPOCHS} | Train metrics: {train_metrics}")
@@ -58,15 +56,16 @@ for epoch in range(EPOCHS):
     model.eval()
     metric.reset()
     with torch.no_grad():
-        for batch in val_loader:
-            images = batch["image"].to(DEVICE)
-            seg_labels = batch["track"].to(DEVICE)
-            depth_labels = batch["depth"].to(DEVICE)
+        for images, seg_labels, depth_labels in val_loader:
+            images = images.to(DEVICE)
+            seg_labels = seg_labels.to(DEVICE)
+            depth_labels = depth_labels.to(DEVICE)
 
             seg_logits, depth_pred = model(images)
             seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode='bilinear', align_corners=False)
-            depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=depth_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
-            metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels.float())
+            depth_pred = F.interpolate(depth_pred.unsqueeze(1), size=seg_labels.shape[1:], mode='bilinear', align_corners=False).squeeze(1)
+
+            metric.add(seg_logits.argmax(1), seg_labels, depth_pred, depth_labels)
 
     val_metrics = metric.compute()
     print(f"Epoch {epoch+1}/{EPOCHS} | Val metrics: {val_metrics}")
