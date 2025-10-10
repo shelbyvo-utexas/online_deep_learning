@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from homework.datasets import road_dataset  # your dataset module
+import torch.nn.functional as F
+from homework.datasets import road_dataset  # make sure your custom dataset module exists
 
 # ------------------------------
 # Detector model
@@ -10,7 +10,7 @@ from homework.datasets import road_dataset  # your dataset module
 class Detector(nn.Module):
     def __init__(self, num_classes=3):
         super().__init__()
-        # Simple example architecture, modify as needed
+        # Simple encoder architecture
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 16, 3, padding=1), nn.ReLU(),
             nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(),
@@ -63,11 +63,15 @@ def train_detector(
             optimizer.zero_grad()
             seg_logits, depth_preds = model(images)
 
-            # Segmentation loss
-            seg_loss = seg_criterion(seg_logits, seg_labels.long())
-            # Depth loss
-            if depth_preds.shape[1] == 1:
+            # Upsample logits and depth to match labels
+            seg_logits = F.interpolate(seg_logits, size=seg_labels.shape[1:], mode="bilinear", align_corners=False)
+            if depth_preds.dim() == 4 and depth_preds.shape[1] == 1:
                 depth_preds = depth_preds.squeeze(1)
+            depth_preds = F.interpolate(depth_preds.unsqueeze(1), size=depth_labels.shape[1:], mode="bilinear", align_corners=False)
+            depth_preds = depth_preds.squeeze(1)
+
+            # Compute losses
+            seg_loss = seg_criterion(seg_logits, seg_labels.long())
             depth_loss = depth_criterion(depth_preds, depth_labels.float())
 
             loss = seg_loss + depth_loss
