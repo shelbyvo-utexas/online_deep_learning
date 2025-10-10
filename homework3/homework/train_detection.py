@@ -3,6 +3,7 @@ import torch.nn as nn
 from homework.models import Detector, save_model
 from homework.datasets.road_dataset import load_data
 from homework.metrics import DetectionMetric
+import torch.nn.functional as F
 
 # Config
 DATA_PATH = "drive_data"  # adjust path
