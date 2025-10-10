@@ -5,7 +5,7 @@ from homework.datasets.road_dataset import load_data
 from homework.metrics import DetectionMetric
 
 # Config
-DATA_PATH = "datasets/road"  # adjust path
+DATA_PATH = "drive_data"  # adjust path
 BATCH_SIZE = 8
 EPOCHS = 10
 LR = 1e-3
